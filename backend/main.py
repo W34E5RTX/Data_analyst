@@ -18,6 +18,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, Paragraph
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -26,9 +28,20 @@ METADATA_FILE = DATA_DIR / "datasets.json"
 REPORTS_FILE = DATA_DIR / "reports.json"
 MAX_FILE_SIZE = 50 * 1024 * 1024
 ALLOWED_TYPES = {".csv", ".xlsx", ".xls"}
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+database_engine: Engine | None = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None
 
 app = FastAPI(title="DataMind AI API", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173")], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173")],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def read_metadata() -> list[dict[str, Any]]:
@@ -126,7 +139,15 @@ def analysis_for(dataset: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    result = {"status": "ok", "database": "not_configured"}
+    if database_engine:
+        try:
+            with database_engine.connect() as connection:
+                connection.execute(text("select 1"))
+            result["database"] = "connected"
+        except Exception:
+            result["database"] = "error"
+    return result
 
 
 @app.get("/api/datasets")
