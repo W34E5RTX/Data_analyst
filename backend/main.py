@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -18,10 +20,11 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, Paragraph
-from sqlalchemy import create_engine, text
+from sqlalchemy import Boolean, Column, Integer, LargeBinary, MetaData, String, Table, Text, create_engine, insert, select, text
 from sqlalchemy.engine import Engine
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 METADATA_FILE = DATA_DIR / "datasets.json"
@@ -32,6 +35,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 database_engine: Engine | None = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None
+db_metadata = MetaData()
+datasets_table = Table("datasets", db_metadata, Column("id", String(64), primary_key=True), Column("name", String(255), nullable=False), Column("rows", Integer, nullable=False), Column("columns", Integer, nullable=False), Column("quality_score", Integer, nullable=False), Column("status", String(32), nullable=False), Column("file_type", String(16), nullable=False), Column("created_at", String(64), nullable=False), Column("size_bytes", Integer, nullable=False), Column("file_data", LargeBinary, nullable=False))
+reports_table = Table("reports", db_metadata, Column("id", String(64), primary_key=True), Column("name", String(255), nullable=False), Column("dataset_id", String(64), nullable=False), Column("dataset_name", String(255), nullable=False), Column("type", String(80), nullable=False), Column("status", String(32), nullable=False), Column("created_at", String(64), nullable=False), Column("summary", Text, nullable=False), Column("analysis", Text, nullable=False))
+if database_engine:
+    db_metadata.create_all(database_engine)
 
 app = FastAPI(title="DataMind AI API", version="1.0.0")
 app.add_middleware(
@@ -64,11 +72,70 @@ def save_reports(items: list[dict[str, Any]]) -> None:
     REPORTS_FILE.write_text(json.dumps(items, indent=2, default=str), encoding="utf-8")
 
 
+def database_ready() -> bool:
+    return database_engine is not None
+
+
+def db_dataset(item: dict[str, Any], file_data: bytes) -> dict[str, Any]:
+    return {key: item[key] for key in ("id", "name", "rows", "columns", "quality_score", "status", "file_type", "created_at", "size_bytes")} | {"file_data": file_data}
+
+
+def database_dataset_rows() -> list[dict[str, Any]]:
+    if not database_ready():
+        return []
+    with database_engine.connect() as connection:
+        return [dict(row._mapping) for row in connection.execute(select(datasets_table).order_by(datasets_table.c.created_at.desc()))]
+
+
+def dataset_record(dataset_id: str) -> dict[str, Any] | None:
+    if database_ready():
+        with database_engine.connect() as connection:
+            row = connection.execute(select(datasets_table).where(datasets_table.c.id == dataset_id)).first()
+            if row:
+                record = dict(row._mapping)
+                record["path"] = str(DATA_DIR / f"{record['id']}.{record['file_type']}")
+                return record
+    return next((item for item in read_metadata() if item["id"] == dataset_id), None)
+
+
+def persist_dataset(item: dict[str, Any], file_data: bytes) -> None:
+    if database_ready():
+        with database_engine.begin() as connection:
+            connection.execute(insert(datasets_table).values(**db_dataset(item, file_data)))
+    else:
+        items = read_metadata()
+        items.insert(0, item)
+        save_metadata(items)
+
+
+def persist_report(report: dict[str, Any]) -> None:
+    if database_ready():
+        with database_engine.begin() as connection:
+            connection.execute(insert(reports_table).values(id=report["id"], name=report["name"], dataset_id=report["dataset_id"], dataset_name=report["dataset_name"], type=report["type"], status=report["status"], created_at=report["created_at"], summary=report["summary"], analysis=json.dumps(report["analysis"])))
+    else:
+        items = read_reports()
+        items.insert(0, report)
+        save_reports(items)
+
+
+def database_reports() -> list[dict[str, Any]]:
+    if not database_ready():
+        return read_reports()
+    with database_engine.connect() as connection:
+        rows = connection.execute(select(reports_table).order_by(reports_table.c.created_at.desc())).mappings()
+        return [{**dict(row), "analysis": json.loads(row["analysis"])} for row in rows]
+
+
+def report_record(report_id: str) -> dict[str, Any] | None:
+    return next((item for item in database_reports() if item["id"] == report_id), None)
+
+
 def load_frame(dataset: dict[str, Any]) -> pd.DataFrame:
+    if database_ready() and dataset.get("file_data") is not None:
+        source = io.BytesIO(dataset["file_data"])
+        return pd.read_csv(source) if dataset["file_type"] == "csv" else pd.read_excel(source)
     path = Path(dataset["path"])
-    if dataset["file_type"] == "csv":
-        return pd.read_csv(path)
-    return pd.read_excel(path)
+    return pd.read_csv(path) if dataset["file_type"] == "csv" else pd.read_excel(path)
 
 
 def profile_frame(frame: pd.DataFrame) -> dict[str, Any]:
@@ -134,7 +201,7 @@ def analysis_for(dataset: dict[str, Any]) -> dict[str, Any]:
         series = pd.to_numeric(frame[column], errors="coerce").dropna()
         insights.append({"id": "range", "severity": "info", "title": f"{column} has a broad operating range", "description": f"Values span {series.min():,.1f} to {series.max():,.1f} across the analyzed rows.", "metric": f"{series.max() - series.min():,.1f} spread"})
     insights.append({"id": "quality", "severity": "positive" if quality["score"] >= 90 else "warning", "title": "Data quality is ready for exploration", "description": quality["recommendations"][0], "metric": f"{quality['score']}/100"})
-    return {"dataset": {key: value for key, value in dataset.items() if key != "path"}, "metrics": metrics, "charts": charts, "insights": insights, "profile": profile, "quality": quality}
+    return {"dataset": {key: value for key, value in dataset.items() if key not in ("path", "file_data")}, "metrics": metrics, "charts": charts, "insights": insights, "profile": profile, "quality": quality}
 
 
 @app.get("/api/health")
@@ -152,7 +219,8 @@ def health() -> dict[str, str]:
 
 @app.get("/api/datasets")
 def datasets() -> list[dict[str, Any]]:
-    return [{key: value for key, value in item.items() if key != "path"} for item in read_metadata()]
+    items = database_dataset_rows() if database_ready() else read_metadata()
+    return [{key: value for key, value in item.items() if key not in ("path", "file_data")} for item in items]
 
 
 @app.post("/api/datasets/upload")
@@ -173,7 +241,7 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(400, f"Could not read this file: {error}") from error
     quality = quality_frame(frame)
     item = {"id": dataset_id, "name": file.filename, "rows": len(frame), "columns": len(frame.columns), "quality_score": quality["score"], "status": "ready", "file_type": extension[1:], "created_at": datetime.now(timezone.utc).isoformat(), "size_bytes": len(content), "path": str(path)}
-    items = read_metadata(); items.insert(0, item); save_metadata(items)
+    persist_dataset(item, content)
     return {key: value for key, value in item.items() if key != "path"}
 
 
@@ -182,13 +250,13 @@ def demo_dataset() -> dict[str, Any]:
     frame = pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"], "Region": ["North", "South", "North", "West", "South", "West"], "Revenue": [120000, 135000, 112000, 158000, 149000, 175000], "Orders": [420, 460, 390, 540, 515, 590], "Marketing Spend": [18000, 21000, 19500, 24000, 23000, 26000]})
     dataset_id = str(uuid.uuid4()); path = DATA_DIR / f"{dataset_id}.csv"; frame.to_csv(path, index=False)
     item = {"id": dataset_id, "name": "demo_sales.csv", "rows": len(frame), "columns": len(frame.columns), "quality_score": quality_frame(frame)["score"], "status": "ready", "file_type": "csv", "created_at": datetime.now(timezone.utc).isoformat(), "size_bytes": path.stat().st_size, "path": str(path)}
-    items = read_metadata(); items.insert(0, item); save_metadata(items)
+    persist_dataset(item, path.read_bytes())
     return {key: value for key, value in item.items() if key != "path"}
 
 
 @app.get("/api/datasets/{dataset_id}/analysis")
 def dataset_analysis(dataset_id: str) -> dict[str, Any]:
-    dataset = next((item for item in read_metadata() if item["id"] == dataset_id), None)
+    dataset = dataset_record(dataset_id)
     if not dataset:
         raise HTTPException(404, "Dataset not found.")
     return analysis_for(dataset)
@@ -201,7 +269,7 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/ai/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
-    dataset = next((item for item in read_metadata() if item["id"] == request.dataset_id), None)
+    dataset = dataset_record(request.dataset_id)
     if not dataset:
         raise HTTPException(404, "Dataset not found.")
     analysis = analysis_for(dataset)
@@ -239,12 +307,12 @@ class ReportRequest(BaseModel):
 
 @app.get("/api/reports")
 def reports() -> list[dict[str, Any]]:
-    return read_reports()
+    return database_reports()
 
 
 @app.post("/api/reports")
 def create_report(request: ReportRequest) -> dict[str, Any]:
-    dataset = next((item for item in read_metadata() if item["id"] == request.dataset_id), None)
+    dataset = dataset_record(request.dataset_id)
     if not dataset:
         raise HTTPException(404, "Dataset not found.")
     analysis = analysis_for(dataset)
@@ -259,15 +327,13 @@ def create_report(request: ReportRequest) -> dict[str, Any]:
         "summary": f"{dataset['name']} contains {dataset['rows']:,} rows across {dataset['columns']} columns with a quality score of {analysis['quality']['score']}/100.",
         "analysis": analysis,
     }
-    items = read_reports()
-    items.insert(0, report)
-    save_reports(items)
+    persist_report(report)
     return report
 
 
 @app.get("/api/reports/{report_id}")
 def get_report(report_id: str) -> dict[str, Any]:
-    report = next((item for item in read_reports() if item["id"] == report_id), None)
+    report = report_record(report_id)
     if not report:
         raise HTTPException(404, "Report not found.")
     return report
@@ -275,7 +341,7 @@ def get_report(report_id: str) -> dict[str, Any]:
 
 @app.get("/api/reports/{report_id}/pdf")
 def download_report_pdf(report_id: str) -> FileResponse:
-    report = next((item for item in read_reports() if item["id"] == report_id), None)
+    report = report_record(report_id)
     if not report:
         raise HTTPException(404, "Report not found.")
     pdf_path = DATA_DIR / f"{report_id}.pdf"
@@ -294,9 +360,13 @@ def download_report_pdf(report_id: str) -> FileResponse:
 
 @app.delete("/api/reports/{report_id}")
 def delete_report(report_id: str) -> dict[str, bool]:
-    items = read_reports()
+    items = database_reports()
     remaining = [item for item in items if item["id"] != report_id]
     if len(remaining) == len(items):
         raise HTTPException(404, "Report not found.")
-    save_reports(remaining)
+    if database_ready():
+        with database_engine.begin() as connection:
+            connection.execute(reports_table.delete().where(reports_table.c.id == report_id))
+    else:
+        save_reports(remaining)
     return {"deleted": True}
