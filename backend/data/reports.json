@@ -1,0 +1,370 @@
+[
+  {
+    "id": "bee376c1-72cb-43c7-91d8-8c0611e92438",
+    "name": "Executive Summary - d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+    "dataset_id": "0526305a-0b2c-4ece-bd76-49858a438467",
+    "dataset_name": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+    "type": "Executive Summary",
+    "status": "ready",
+    "created_at": "2026-09-06T16:02:32.409895+00:00",
+    "summary": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv contains 6 rows across 5 columns with a quality score of 100/100.",
+    "analysis": {
+      "dataset": {
+        "id": "0526305a-0b2c-4ece-bd76-49858a438467",
+        "name": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+        "rows": 6,
+        "columns": 5,
+        "quality_score": 100,
+        "status": "ready",
+        "file_type": "csv",
+        "created_at": "2026-09-06T13:03:56.737886+00:00",
+        "size_bytes": 211
+      },
+      "metrics": [
+        {
+          "label": "Average Revenue",
+          "value": "141,500.0",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Average Orders",
+          "value": "485.8",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Average Marketing Spend",
+          "value": "21,916.7",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Rows analyzed",
+          "value": "6",
+          "change": "5 columns",
+          "trend": "neutral"
+        }
+      ],
+      "charts": [
+        {
+          "title": "Revenue over records",
+          "kind": "area",
+          "x_label": "Record",
+          "y_label": "Revenue",
+          "points": [
+            {
+              "label": "1",
+              "value": 120000.0
+            },
+            {
+              "label": "2",
+              "value": 135000.0
+            },
+            {
+              "label": "3",
+              "value": 112000.0
+            },
+            {
+              "label": "4",
+              "value": 158000.0
+            },
+            {
+              "label": "5",
+              "value": 149000.0
+            },
+            {
+              "label": "6",
+              "value": 175000.0
+            }
+          ]
+        },
+        {
+          "title": "Revenue by Month",
+          "kind": "bar",
+          "x_label": "Month",
+          "y_label": "Revenue",
+          "points": [
+            {
+              "label": "Jun",
+              "value": 175000.0
+            },
+            {
+              "label": "Apr",
+              "value": 158000.0
+            },
+            {
+              "label": "May",
+              "value": 149000.0
+            },
+            {
+              "label": "Feb",
+              "value": 135000.0
+            },
+            {
+              "label": "Jan",
+              "value": 120000.0
+            },
+            {
+              "label": "Mar",
+              "value": 112000.0
+            }
+          ]
+        }
+      ],
+      "insights": [
+        {
+          "id": "range",
+          "severity": "info",
+          "title": "Revenue has a broad operating range",
+          "description": "Values span 112,000.0 to 175,000.0 across the analyzed rows.",
+          "metric": "63,000.0 spread"
+        },
+        {
+          "id": "quality",
+          "severity": "positive",
+          "title": "Data quality is ready for exploration",
+          "description": "No immediate quality issues detected.",
+          "metric": "100/100"
+        }
+      ],
+      "profile": {
+        "numeric_columns": [
+          "Revenue",
+          "Orders",
+          "Marketing Spend"
+        ],
+        "categorical_columns": [
+          "Month",
+          "Region"
+        ],
+        "date_columns": [],
+        "columns": [
+          {
+            "name": "Month",
+            "type": "str",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Region",
+            "type": "str",
+            "nulls": 0,
+            "unique": 3
+          },
+          {
+            "name": "Revenue",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Orders",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Marketing Spend",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          }
+        ]
+      },
+      "quality": {
+        "score": 100,
+        "missing_values": 0,
+        "duplicate_rows": 0,
+        "outliers": 0,
+        "recommendations": [
+          "No immediate quality issues detected."
+        ]
+      }
+    }
+  },
+  {
+    "id": "8cdae803-a2d8-4129-a885-fac900215ffe",
+    "name": "Executive Summary - d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+    "dataset_id": "0526305a-0b2c-4ece-bd76-49858a438467",
+    "dataset_name": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+    "type": "Executive Summary",
+    "status": "ready",
+    "created_at": "2026-09-06T14:33:27.237298+00:00",
+    "summary": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv contains 6 rows across 5 columns with a quality score of 100/100.",
+    "analysis": {
+      "dataset": {
+        "id": "0526305a-0b2c-4ece-bd76-49858a438467",
+        "name": "d7fc21c1-e656-4f35-bbf0-f48a696023db.csv",
+        "rows": 6,
+        "columns": 5,
+        "quality_score": 100,
+        "status": "ready",
+        "file_type": "csv",
+        "created_at": "2026-09-06T13:03:56.737886+00:00",
+        "size_bytes": 211
+      },
+      "metrics": [
+        {
+          "label": "Average Revenue",
+          "value": "141,500.0",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Average Orders",
+          "value": "485.8",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Average Marketing Spend",
+          "value": "21,916.7",
+          "change": "6 values",
+          "trend": "neutral"
+        },
+        {
+          "label": "Rows analyzed",
+          "value": "6",
+          "change": "5 columns",
+          "trend": "neutral"
+        }
+      ],
+      "charts": [
+        {
+          "title": "Revenue over records",
+          "kind": "area",
+          "x_label": "Record",
+          "y_label": "Revenue",
+          "points": [
+            {
+              "label": "1",
+              "value": 120000.0
+            },
+            {
+              "label": "2",
+              "value": 135000.0
+            },
+            {
+              "label": "3",
+              "value": 112000.0
+            },
+            {
+              "label": "4",
+              "value": 158000.0
+            },
+            {
+              "label": "5",
+              "value": 149000.0
+            },
+            {
+              "label": "6",
+              "value": 175000.0
+            }
+          ]
+        },
+        {
+          "title": "Revenue by Month",
+          "kind": "bar",
+          "x_label": "Month",
+          "y_label": "Revenue",
+          "points": [
+            {
+              "label": "Jun",
+              "value": 175000.0
+            },
+            {
+              "label": "Apr",
+              "value": 158000.0
+            },
+            {
+              "label": "May",
+              "value": 149000.0
+            },
+            {
+              "label": "Feb",
+              "value": 135000.0
+            },
+            {
+              "label": "Jan",
+              "value": 120000.0
+            },
+            {
+              "label": "Mar",
+              "value": 112000.0
+            }
+          ]
+        }
+      ],
+      "insights": [
+        {
+          "id": "range",
+          "severity": "info",
+          "title": "Revenue has a broad operating range",
+          "description": "Values span 112,000.0 to 175,000.0 across the analyzed rows.",
+          "metric": "63,000.0 spread"
+        },
+        {
+          "id": "quality",
+          "severity": "positive",
+          "title": "Data quality is ready for exploration",
+          "description": "No immediate quality issues detected.",
+          "metric": "100/100"
+        }
+      ],
+      "profile": {
+        "numeric_columns": [
+          "Revenue",
+          "Orders",
+          "Marketing Spend"
+        ],
+        "categorical_columns": [
+          "Month",
+          "Region"
+        ],
+        "date_columns": [],
+        "columns": [
+          {
+            "name": "Month",
+            "type": "str",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Region",
+            "type": "str",
+            "nulls": 0,
+            "unique": 3
+          },
+          {
+            "name": "Revenue",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Orders",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          },
+          {
+            "name": "Marketing Spend",
+            "type": "int64",
+            "nulls": 0,
+            "unique": 6
+          }
+        ]
+      },
+      "quality": {
+        "score": 100,
+        "missing_values": 0,
+        "duplicate_rows": 0,
+        "outliers": 0,
+        "recommendations": [
+          "No immediate quality issues detected."
+        ]
+      }
+    }
+  }
+]
