@@ -217,6 +217,11 @@ def health() -> dict[str, str]:
     return result
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"service": "DataMind AI API", "status": "ok", "docs": "/docs"}
+
+
 @app.get("/api/datasets")
 def datasets() -> list[dict[str, Any]]:
     items = database_dataset_rows() if database_ready() else read_metadata()
