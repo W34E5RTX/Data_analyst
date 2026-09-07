@@ -20,7 +20,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, Paragraph
-from sqlalchemy import Boolean, Column, Integer, LargeBinary, MetaData, String, Table, Text, create_engine, insert, select, text
+from sqlalchemy import Boolean, Column, Integer, LargeBinary, MetaData, String, Table, Text, create_engine, insert, select, text, update
 from sqlalchemy.engine import Engine
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -138,6 +138,26 @@ def load_frame(dataset: dict[str, Any]) -> pd.DataFrame:
     return pd.read_csv(path) if dataset["file_type"] == "csv" else pd.read_excel(path)
 
 
+def frame_payload(frame: pd.DataFrame) -> dict[str, Any]:
+    columns = [str(column) for column in frame.columns]
+    rows = []
+    for values in frame.astype(object).where(pd.notna(frame), None).to_numpy().tolist():
+        rows.append({column: value.item() if isinstance(value, np.generic) else value for column, value in zip(columns, values)})
+    return {"columns": columns, "rows": rows}
+
+
+def save_frame(dataset: dict[str, Any], frame: pd.DataFrame) -> bytes:
+    output = io.BytesIO()
+    if dataset["file_type"] == "csv":
+        file_data = frame.to_csv(index=False).encode("utf-8")
+        Path(dataset["path"]).write_bytes(file_data)
+        return file_data
+    frame.to_excel(output, index=False)
+    file_data = output.getvalue()
+    Path(dataset["path"]).write_bytes(file_data)
+    return file_data
+
+
 def profile_frame(frame: pd.DataFrame) -> dict[str, Any]:
     numeric = frame.select_dtypes(include=np.number).columns.tolist()
     dates = [column for column in frame.columns if pd.api.types.is_datetime64_any_dtype(frame[column])]
@@ -191,10 +211,25 @@ def analysis_for(dataset: dict[str, Any]) -> dict[str, Any]:
         values = pd.to_numeric(frame[column], errors="coerce").dropna().reset_index(drop=True)
         points = [{"label": str(index + 1), "value": round(float(value), 2)} for index, value in values.tail(24).items()]
         charts.append({"title": f"{column} over records", "kind": "area", "x_label": "Record", "y_label": column, "points": points})
+    if len(numeric) >= 2:
+        first, second = numeric[:2]
+        relationship = frame[[first, second]].apply(pd.to_numeric, errors="coerce").dropna().tail(80)
+        charts.append({"title": f"{first} vs {second}", "kind": "scatter", "x_label": first, "y_label": second, "points": [{"label": str(index + 1), "value": round(float(row[first]), 2), "secondary": round(float(row[second]), 2)} for index, (_, row) in enumerate(relationship.iterrows())]})
+    if numeric:
+        column = numeric[0]
+        values = pd.to_numeric(frame[column], errors="coerce").dropna()
+        if len(values) >= 3 and values.min() != values.max():
+            counts, edges = np.histogram(values, bins=min(6, len(values)))
+            charts.append({"title": f"{column} distribution", "kind": "histogram", "x_label": column, "y_label": "Records", "points": [{"label": f"{edges[index]:,.0f}-{edges[index + 1]:,.0f}", "value": int(count)} for index, count in enumerate(counts)]})
+    if len(numeric) >= 3:
+        averages = {column: float(pd.to_numeric(frame[column], errors="coerce").mean()) for column in numeric[:6]}
+        peak = max(averages.values()) or 1
+        charts.append({"title": "Relative metric profile", "kind": "radar", "x_label": "Metrics", "y_label": "Relative score", "points": [{"label": column[:18], "value": round((value / peak) * 100, 1)} for column, value in averages.items()]})
     if categorical and numeric:
         category, measure = categorical[0], numeric[0]
         grouped = frame.groupby(category, dropna=True)[measure].sum().sort_values(ascending=False).head(8)
         charts.append({"title": f"{measure} by {category}", "kind": "bar", "x_label": category, "y_label": measure, "points": [{"label": str(label)[:16], "value": round(float(value), 2)} for label, value in grouped.items()]})
+        charts.append({"title": f"{measure} share by {category}", "kind": "pie", "x_label": category, "y_label": measure, "points": [{"label": str(label)[:16], "value": round(float(value), 2)} for label, value in grouped.items()]})
     insights = []
     if numeric:
         column = numeric[0]
@@ -267,6 +302,58 @@ def dataset_analysis(dataset_id: str) -> dict[str, Any]:
     return analysis_for(dataset)
 
 
+@app.get("/api/datasets/{dataset_id}/data")
+def dataset_data(dataset_id: str) -> dict[str, Any]:
+    dataset = dataset_record(dataset_id)
+    if not dataset:
+        raise HTTPException(404, "Dataset not found.")
+    return frame_payload(load_frame(dataset))
+
+
+class DatasetDataRequest(BaseModel):
+    rows: list[dict[str, Any]]
+    types: dict[str, str] = {}
+
+
+@app.put("/api/datasets/{dataset_id}/data")
+def update_dataset_data(dataset_id: str, request: DatasetDataRequest) -> dict[str, Any]:
+    dataset = dataset_record(dataset_id)
+    if not dataset:
+        raise HTTPException(404, "Dataset not found.")
+    if not request.rows:
+        raise HTTPException(400, "A dataset must contain at least one row.")
+    columns = list(request.rows[0].keys())
+    if not columns or any(set(row.keys()) != set(columns) for row in request.rows):
+        raise HTTPException(400, "Every row must contain the same columns.")
+    frame = pd.DataFrame(request.rows, columns=columns)
+    try:
+        for column, column_type in request.types.items():
+            if column not in frame.columns:
+                raise ValueError(f"Unknown column: {column}")
+            if column_type == "number":
+                frame[column] = pd.to_numeric(frame[column], errors="raise")
+            elif column_type == "boolean":
+                frame[column] = frame[column].map(lambda value: str(value).lower() in ("true", "1", "yes"))
+            elif column_type == "date":
+                frame[column] = pd.to_datetime(frame[column], errors="raise")
+            elif column_type != "text":
+                raise ValueError(f"Unsupported data type: {column_type}")
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, f"Could not apply data types: {error}") from error
+    file_data = save_frame(dataset, frame)
+    quality = quality_frame(frame)
+    item = {**dataset, "rows": len(frame), "columns": len(frame.columns), "quality_score": quality["score"], "size_bytes": len(file_data), "status": "ready"}
+    item.pop("path", None)
+    item.pop("file_data", None)
+    if database_ready():
+        with database_engine.begin() as connection:
+            connection.execute(update(datasets_table).where(datasets_table.c.id == dataset_id).values(**db_dataset(item, file_data)))
+    else:
+        items = read_metadata()
+        save_metadata([item if current["id"] == dataset_id else current for current in items])
+    return item
+
+
 class ChatRequest(BaseModel):
     dataset_id: str
     question: str
@@ -281,8 +368,16 @@ def chat(request: ChatRequest) -> dict[str, str]:
     question = request.question.lower()
     metrics = analysis["metrics"]
     quality = analysis["quality"]
-    if "quality" in question or "clean" in question:
+    if "column" in question or "schema" in question or "field" in question:
+        profile = analysis["profile"]
+        answer = f"This dataset has {len(profile['columns'])} columns: {', '.join(column['name'] for column in profile['columns'])}. Numeric fields are {', '.join(profile['numeric_columns']) or 'none'}, and categorical fields are {', '.join(profile['categorical_columns']) or 'none'}."
+    elif "quality" in question or "clean" in question or "missing" in question or "outlier" in question:
         answer = f"Your dataset quality score is {quality['score']}/100. It has {quality['missing_values']} missing values, {quality['duplicate_rows']} duplicate rows, and {quality['outliers']} detected outliers."
+    elif "average" in question or "mean" in question:
+        facts = ", ".join(f"{metric['label']}: {metric['value']}" for metric in metrics if metric['label'].startswith("Average"))
+        answer = f"The computed averages are {facts or 'not available for this dataset'}."
+    elif "recommend" in question or "next" in question or "should" in question:
+        answer = f"Start with the strongest computed signal: {analysis['insights'][0]['description'] if analysis['insights'] else 'Explore the available metrics and quality profile'}. Then review the quality recommendation: {quality['recommendations'][0]}"
     elif "top" in question or "best" in question or "highest" in question:
         chart = next((item for item in analysis["charts"] if item["kind"] == "bar"), None)
         if chart and chart["points"]:

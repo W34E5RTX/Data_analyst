@@ -28,7 +28,7 @@ export interface ChartPoint {
 
 export interface ChartData {
   title: string
-  kind: 'line' | 'bar' | 'area'
+  kind: 'line' | 'bar' | 'area' | 'pie' | 'scatter' | 'histogram' | 'radar'
   x_label: string
   y_label: string
   points: ChartPoint[]
