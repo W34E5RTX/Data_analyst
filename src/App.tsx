@@ -51,9 +51,10 @@ import type { Dataset, DatasetAnalysis, Report } from "./types";
 const isLocalDevelopment =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
-const API_URL = import.meta.env.PROD || !isLocalDevelopment
-  ? window.location.origin
-  : "http://localhost:8000";
+const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+const API_URL = isLocalDevelopment
+  ? "http://localhost:8000"
+  : configuredApiUrl || window.location.origin;
 
 type View =
   | "overview"
@@ -86,6 +87,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function isNetworkError(error: unknown) {
+  return error instanceof TypeError && error.message === "Failed to fetch";
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-IN", {
     notation: value > 999999 ? "compact" : "standard",
@@ -114,7 +119,9 @@ function App() {
         setDatasets(items);
         setReportsCount(reports.length);
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (!isNetworkError(e)) setError(e.message);
+      })
       .finally(() => setLoading(false));
   };
   useEffect(refresh, []);
@@ -171,7 +178,7 @@ function App() {
   const activeDataset = analysis?.dataset ?? datasets[0];
   if (!user) return <AuthScreen onAuthenticated={(account) => { localStorage.setItem("datamind-user", JSON.stringify(account)); setUser(account); }} />;
   return (
-    <div className={isDark ? "app dark" : "app"}>
+    <div className={`${isDark ? "app dark" : "app"} ${view === "analytics" ? "app-bi" : ""}`}>
       <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
         <div className="brand">
           <span className="brand-mark">D</span>
@@ -615,8 +622,27 @@ function Analytics({
   dataset?: Dataset;
 }) {
   const [showFilters, setShowFilters] = useState(false);
+  const [showDateRanges, setShowDateRanges] = useState(false);
+  const [dateRange, setDateRange] = useState("All time");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [visibleAnalysis, setVisibleAnalysis] = useState(analysis);
   const [removeNullRows, setRemoveNullRows] = useState(true);
   const [downloadMessage, setDownloadMessage] = useState("");
+  useEffect(() => {
+    if (!analysis || !dataset || dateRange === "All time" || (dateRange === "Custom range" && (!customStartDate || !customEndDate))) {
+      setVisibleAnalysis(analysis);
+      return;
+    }
+    const query = new URLSearchParams({ range: dateRange });
+    if (dateRange === "Custom range") {
+      query.set("start_date", customStartDate);
+      query.set("end_date", customEndDate);
+    }
+    request<DatasetAnalysis>(`/api/datasets/${dataset.id}/analysis?${query.toString()}`)
+      .then(setVisibleAnalysis)
+      .catch(() => setVisibleAnalysis(analysis));
+  }, [analysis, dataset, dateRange, customStartDate, customEndDate]);
   if (!analysis || !dataset)
     return (
       <>
@@ -637,8 +663,9 @@ function Analytics({
         </div>
       </>
     );
+  const dashboardAnalysis = visibleAnalysis ?? analysis;
   const exportAnalysis = () => {
-    const blob = new Blob([JSON.stringify(analysis, null, 2)], {
+    const blob = new Blob([JSON.stringify(dashboardAnalysis, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -678,7 +705,41 @@ function Analytics({
           <p><span className="live-dot" /> Updated just now · {formatNumber(dataset.rows)} rows · {dataset.columns} columns</p>
         </div>
         <div className="bi-masthead-actions">
-          <button className="bi-ghost-button"><CalendarRange size={15} /> All time</button>
+          <div className="bi-date-control">
+            <button className="bi-ghost-button" onClick={() => setShowDateRanges((current) => !current)} aria-expanded={showDateRanges}>
+              <CalendarRange size={15} /> {dateRange === "Custom range" ? `${customStartDate} - ${customEndDate}` : dateRange}
+            </button>
+            {showDateRanges && (
+              <div className="bi-date-menu">
+                {["All time", "Last 7 days", "Last 30 days", "This year"].map((range) => (
+                  <button
+                    key={range}
+                    className={range === dateRange ? "selected" : ""}
+                    onClick={() => {
+                      setDateRange(range);
+                      setShowDateRanges(false);
+                    }}
+                  >
+                    {range}
+                  </button>
+                ))}
+                <div className="bi-custom-date-fields">
+                  <label>From<input type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} /></label>
+                  <label>To<input type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} /></label>
+                  <button
+                    className="bi-date-apply"
+                    disabled={!customStartDate || !customEndDate || customStartDate > customEndDate}
+                    onClick={() => {
+                      setDateRange("Custom range");
+                      setShowDateRanges(false);
+                    }}
+                  >
+                    Apply dates
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <button className="button light-button" onClick={exportAnalysis}><FileText size={16} /> Export</button>
         </div>
       </section>
@@ -689,7 +750,7 @@ function Analytics({
       {showFilters && <div className="bi-filter-panel"><label><input type="checkbox" checked={removeNullRows} onChange={(event) => setRemoveNullRows(event.target.checked)} /> Remove rows with null or blank values</label><button className="button primary" onClick={downloadFilteredData}><FileText size={15} /> Download filtered CSV</button></div>}
       {downloadMessage && <div className="download-message">{downloadMessage}</div>}
       <div className="stats-grid analysis-stats bi-kpis">
-        {analysis.metrics.map((metric) => (
+        {dashboardAnalysis.metrics.map((metric) => (
           <div className="metric-card" key={metric.label}>
             <span className="metric-kicker">Computed KPI</span>
             <span>{metric.label}</span>
@@ -709,9 +770,9 @@ function Analytics({
       </div>
       <div className="bi-main-grid">
         <div className="bi-visuals">
-          <div className="bi-section-label"><span>Performance signals</span><small>{analysis.charts.length} visualizations · Auto-selected from your data</small></div>
+          <div className="bi-section-label"><span>Performance signals</span><small>{dashboardAnalysis.charts.length} visualizations · {dateRange}</small></div>
           <div className="chart-grid bi-chart-grid">
-            {analysis.charts.map((chart, index) => (
+            {dashboardAnalysis.charts.map((chart, index) => (
               <ChartCard key={chart.title} chart={chart} featured={index === 0} />
             ))}
           </div>
@@ -721,13 +782,13 @@ function Analytics({
           <section className="bi-brief-card">
             <div className="bi-brief-icon"><Sparkles size={17} /></div>
             <h2>What matters now</h2>
-            <p>{analysis.insights[0]?.description ?? "Your dataset is ready for exploration."}</p>
+            <p>{dashboardAnalysis.insights[0]?.description ?? "Your dataset is ready for exploration."}</p>
             <button onClick={() => document.querySelector(".lower-grid")?.scrollIntoView({ behavior: "smooth" })}>View signals <span>→</span></button>
           </section>
           <section className="bi-health-card">
-            <div className="bi-health-top"><span>Data health</span><strong>{analysis.quality.score}<small>/100</small></strong></div>
-            <div className="quality-meter"><i style={{ width: `${analysis.quality.score}%` }} /></div>
-            <p>{analysis.quality.recommendations[0]}</p>
+            <div className="bi-health-top"><span>Data health</span><strong>{dashboardAnalysis.quality.score}<small>/100</small></strong></div>
+            <div className="quality-meter"><i style={{ width: `${dashboardAnalysis.quality.score}%` }} /></div>
+            <p>{dashboardAnalysis.quality.recommendations[0]}</p>
           </section>
         </aside>
       </div>
@@ -740,7 +801,7 @@ function Analytics({
             </div>
             <Sparkles size={19} />
           </div>
-          {analysis.insights.map((insight) => (
+          {dashboardAnalysis.insights.map((insight) => (
             <div className="insight" key={insight.id}>
               <span className={`severity ${insight.severity}`} />{" "}
               <div>
@@ -758,25 +819,25 @@ function Analytics({
               <h2>Quality profile</h2>
             </div>
             <span className="score">
-              {analysis.quality.score}
+              {dashboardAnalysis.quality.score}
               <small>/100</small>
             </span>
           </div>
           <div className="quality-meter">
-            <i style={{ width: `${analysis.quality.score}%` }} />
+            <i style={{ width: `${dashboardAnalysis.quality.score}%` }} />
           </div>
           <div className="quality-list">
             <span>
-              Missing values <b>{analysis.quality.missing_values}</b>
+              Missing values <b>{dashboardAnalysis.quality.missing_values}</b>
             </span>
             <span>
-              Duplicate rows <b>{analysis.quality.duplicate_rows}</b>
+              Duplicate rows <b>{dashboardAnalysis.quality.duplicate_rows}</b>
             </span>
             <span>
-              Detected outliers <b>{analysis.quality.outliers}</b>
+              Detected outliers <b>{dashboardAnalysis.quality.outliers}</b>
             </span>
           </div>
-          {analysis.quality.recommendations.map((item) => (
+          {dashboardAnalysis.quality.recommendations.map((item) => (
             <p className="recommendation" key={item}>
               • {item}
             </p>

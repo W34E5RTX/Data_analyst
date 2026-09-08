@@ -21,6 +21,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, Paragraph
 from sqlalchemy import Boolean, Column, Integer, LargeBinary, MetaData, String, Table, Text, create_engine, insert, select, text, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import Engine
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,12 +35,23 @@ ALLOWED_TYPES = {".csv", ".xlsx", ".xls"}
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
-database_engine: Engine | None = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None
+database_engine: Engine | None = None
+if DATABASE_URL:
+    try:
+        candidate_engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 3})
+        with candidate_engine.connect():
+            pass
+        database_engine = candidate_engine
+    except SQLAlchemyError:
+        database_engine = None
 db_metadata = MetaData()
 datasets_table = Table("datasets", db_metadata, Column("id", String(64), primary_key=True), Column("name", String(255), nullable=False), Column("rows", Integer, nullable=False), Column("columns", Integer, nullable=False), Column("quality_score", Integer, nullable=False), Column("status", String(32), nullable=False), Column("file_type", String(16), nullable=False), Column("created_at", String(64), nullable=False), Column("size_bytes", Integer, nullable=False), Column("file_data", LargeBinary, nullable=False))
 reports_table = Table("reports", db_metadata, Column("id", String(64), primary_key=True), Column("name", String(255), nullable=False), Column("dataset_id", String(64), nullable=False), Column("dataset_name", String(255), nullable=False), Column("type", String(80), nullable=False), Column("status", String(32), nullable=False), Column("created_at", String(64), nullable=False), Column("summary", Text, nullable=False), Column("analysis", Text, nullable=False))
 if database_engine:
-    db_metadata.create_all(database_engine)
+    try:
+        db_metadata.create_all(database_engine)
+    except SQLAlchemyError:
+        database_engine = None
 
 app = FastAPI(title="DataMind AI API", version="1.0.0")
 app.add_middleware(
@@ -160,7 +172,16 @@ def save_frame(dataset: dict[str, Any], frame: pd.DataFrame) -> bytes:
 
 def profile_frame(frame: pd.DataFrame) -> dict[str, Any]:
     numeric = frame.select_dtypes(include=np.number).columns.tolist()
-    dates = [column for column in frame.columns if pd.api.types.is_datetime64_any_dtype(frame[column])]
+    dates = []
+    for column in frame.columns:
+        if pd.api.types.is_datetime64_any_dtype(frame[column]):
+            dates.append(str(column))
+            continue
+        if column in numeric:
+            continue
+        parsed = pd.to_datetime(frame[column], errors="coerce")
+        if parsed.notna().mean() >= 0.8:
+            dates.append(str(column))
     categorical = [str(column) for column in frame.columns if column not in numeric and column not in dates]
     columns = []
     for column in frame.columns:
@@ -192,9 +213,30 @@ def quality_frame(frame: pd.DataFrame) -> dict[str, Any]:
     return {"score": score, "missing_values": missing, "duplicate_rows": duplicates, "outliers": outliers, "recommendations": recommendations or ["No immediate quality issues detected."]}
 
 
-def analysis_for(dataset: dict[str, Any]) -> dict[str, Any]:
+def analysis_for(dataset: dict[str, Any], date_range: str = "All time", start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
     frame = load_frame(dataset)
     profile = profile_frame(frame)
+    if profile["date_columns"] and (date_range != "All time" or start_date or end_date):
+        date_column = profile["date_columns"][0]
+        parsed_dates = pd.to_datetime(frame[date_column], errors="coerce")
+        latest_date = parsed_dates.max()
+        if pd.notna(latest_date):
+            if start_date or end_date:
+                start_boundary = pd.to_datetime(start_date, errors="coerce") if start_date else parsed_dates.min()
+                end_boundary = pd.to_datetime(end_date, errors="coerce") + pd.Timedelta(days=1) if end_date else latest_date
+                frame = frame[parsed_dates.ge(start_boundary) & parsed_dates.lt(end_boundary)].copy()
+                profile = profile_frame(frame)
+            elif date_range == "Last 7 days":
+                start_date = latest_date - pd.Timedelta(days=6)
+            elif date_range == "Last 30 days":
+                start_date = latest_date - pd.Timedelta(days=29)
+            elif date_range == "This year":
+                start_date = pd.Timestamp(year=latest_date.year, month=1, day=1)
+            else:
+                start_date = None
+            if start_date is not None:
+                frame = frame[parsed_dates.between(start_date, latest_date)].copy()
+                profile = profile_frame(frame)
     quality = quality_frame(frame)
     numeric = profile["numeric_columns"]
     categorical = profile["categorical_columns"]
@@ -295,11 +337,11 @@ def demo_dataset() -> dict[str, Any]:
 
 
 @app.get("/api/datasets/{dataset_id}/analysis")
-def dataset_analysis(dataset_id: str) -> dict[str, Any]:
+def dataset_analysis(dataset_id: str, range: str = "All time", start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
     dataset = dataset_record(dataset_id)
     if not dataset:
         raise HTTPException(404, "Dataset not found.")
-    return analysis_for(dataset)
+    return analysis_for(dataset, range, start_date, end_date)
 
 
 @app.get("/api/datasets/{dataset_id}/data")

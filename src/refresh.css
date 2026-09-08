@@ -129,6 +129,72 @@ table tbody tr:hover { background: #edf8f2; }
 @media (max-width: 900px) { .bi-main-grid { grid-template-columns: 1fr; } .bi-rail { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } .bi-rail .bi-section-label { grid-column: 1 / -1; margin-bottom: -2px; } .bi-health-card { margin-top: 0; } }
 @media (max-width: 760px) { .bi-dashboard { margin: -28px -18px -48px; } .bi-masthead { align-items: flex-start; flex-direction: column; padding: 28px 18px 24px; } .bi-masthead-actions { width: 100%; } .bi-masthead-actions > * { flex: 1; justify-content: center; } .bi-toolbar { padding: 12px 18px; } .bi-toolbar-actions button:last-child { display: none; } .bi-filter-panel { align-items: stretch; flex-direction: column; margin: 14px 18px 0; } .download-message { margin-left: 18px; margin-right: 18px; } .bi-kpis { padding: 18px 18px 0; grid-template-columns: 1fr 1fr; } .bi-main-grid { padding: 24px 18px 0; } .bi-chart-grid { grid-template-columns: 1fr; gap: 16px; } .chart-card { min-height: 285px; } .featured-chart { grid-row: auto; } .bi-rail { display: block; } .bi-health-card { margin-top: 14px; } .bi-lower-grid { margin: 24px 18px 0; } }
 
+/* Compact report canvas inspired by the reference BI layout. */
+.app-bi { background: #eaf3fa; }
+.app-bi .sidebar { display: none; }
+.app-bi .main { width: 100%; }
+.app-bi .topbar { display: none; }
+.app-bi .content { max-width: none; padding: 0; }
+.app-bi .bi-dashboard { margin: 0; padding: 0 0 26px; }
+.app-bi .bi-masthead { position: relative; align-items: center; min-height: 72px; padding: 14px 22px 14px 30px; background: #0d315f; overflow: hidden; }
+.app-bi .bi-masthead::after { content: ""; position: absolute; right: -18px; top: -56px; width: 290px; height: 120px; border-radius: 0 0 0 90px; background: #eaf3fa; }
+.app-bi .bi-masthead-copy, .app-bi .bi-masthead-actions { position: relative; z-index: 1; }
+.app-bi .bi-masthead .eyebrow { color: #86c7ee; font-size: 9px; letter-spacing: .12em; }
+.app-bi .bi-masthead h1 { margin: 3px 0 2px; font-size: clamp(22px, 3vw, 31px); letter-spacing: -.04em; }
+.app-bi .bi-masthead p { color: #bed8ec; font-size: 10px; }
+.app-bi .bi-masthead-actions { margin-right: 6px; }
+.app-bi .bi-date-control { position: relative; }
+.app-bi .bi-date-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 5; min-width: 142px; padding: 5px; border: 1px solid #c8dcea; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgba(19, 56, 91, .16); }
+.app-bi .bi-date-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: #526b7e; text-align: left; font-size: 11px; cursor: pointer; }
+.app-bi .bi-date-menu button:hover, .app-bi .bi-date-menu button.selected { background: #eaf3fa; color: #15538a; font-weight: 700; }
+.app-bi .bi-custom-date-fields { display: grid; gap: 6px; margin-top: 5px; padding: 8px 5px 5px; border-top: 1px solid #dbe8f1; }
+.app-bi .bi-custom-date-fields label { display: grid; gap: 3px; color: #60788c; font-size: 9px; font-weight: 700; }
+.app-bi .bi-custom-date-fields input { min-width: 0; padding: 5px; border: 1px solid #c8dcea; border-radius: 4px; color: #29465e; font: inherit; font-size: 10px; }
+.app-bi .bi-date-menu .bi-date-apply { background: #15538a; color: #fff; text-align: center; }
+.app-bi .bi-date-menu .bi-date-apply:disabled { background: #c9d7e1; color: #72889a; cursor: not-allowed; }
+.app-bi .bi-ghost-button { background: #1b4e91; border-color: transparent; color: #eff7ff; }
+.app-bi .light-button { background: #f6fbff; color: #15538a; }
+.app-bi .bi-toolbar { padding: 10px 22px 10px 30px; background: #eaf3fa; border-bottom: 1px solid #c8dcea; }
+.app-bi .bi-toolbar-title { color: #173d6b; }
+.app-bi .bi-toolbar-actions button { background: #f8fcff; border-color: #c8dcea; }
+.app-bi .bi-kpis { grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; padding: 14px 16px 0; }
+.app-bi .metric-card { min-height: 98px; padding: 15px; border: 0; border-radius: 13px; color: #fff; box-shadow: 0 5px 12px rgba(31, 69, 108, .1); }
+.app-bi .metric-card:first-child { border-top: 0; }
+.app-bi .metric-card:nth-child(6n + 1) { background: linear-gradient(135deg, #5739c8, #5365d8); }
+.app-bi .metric-card:nth-child(6n + 2) { background: linear-gradient(135deg, #125395, #1174bd); }
+.app-bi .metric-card:nth-child(6n + 3) { background: linear-gradient(135deg, #087eb5, #0a9dca); }
+.app-bi .metric-card:nth-child(6n + 4) { background: linear-gradient(135deg, #08a995, #12cc79); }
+.app-bi .metric-card:nth-child(6n + 5) { background: linear-gradient(135deg, #d34c7d, #e85c72); }
+.app-bi .metric-card:nth-child(6n) { background: linear-gradient(135deg, #7846a8, #9850b9); }
+.app-bi .metric-card .metric-kicker { color: rgba(255,255,255,.7); }
+.app-bi .metric-card > span:not(.metric-kicker), .app-bi .metric-card small { color: #fff; }
+.app-bi .metric-card strong { margin: 6px 0 0; font-size: 26px; }
+.app-bi .bi-main-grid { grid-template-columns: minmax(0, 1fr) 242px; gap: 14px; padding: 18px 16px 0; }
+.app-bi .bi-section-label { margin-bottom: 8px; }
+.app-bi .bi-section-label span { color: #243c54; }
+.app-bi .bi-section-label small { color: #71879a; }
+.app-bi .bi-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.app-bi .featured-chart { grid-row: span 1; }
+.app-bi .chart-card, .app-bi .bi-health-card, .app-bi .bi-lower-grid .panel { border-color: #c8dcea; border-radius: 11px; background: #fff; box-shadow: 0 3px 9px rgba(38, 75, 107, .06); }
+.app-bi .chart-card { min-height: 276px; }
+.app-bi .chart-card .panel-heading { padding: 14px 14px 5px; }
+.app-bi .chart-card h2 { color: #253b50; font-size: 15px; }
+.app-bi .chart-card .eyebrow { color: #73899b; font-size: 9px; }
+.app-bi .bi-rail { padding-top: 0; }
+.app-bi .bi-brief-card { min-height: 170px; padding: 18px; border-radius: 11px; background: #fff; color: #263d52; border: 1px solid #c8dcea; box-shadow: 0 3px 9px rgba(38, 75, 107, .06); }
+.app-bi .bi-brief-icon { background: #e6f2fb; color: #1774b3; }
+.app-bi .bi-brief-card h2 { margin: 14px 0 7px; font-size: 16px; }
+.app-bi .bi-brief-card p { color: #647d91; }
+.app-bi .bi-brief-card button { color: #1672ae; }
+.app-bi .bi-health-card { margin-top: 12px; }
+.app-bi .bi-health-top strong { color: #1473af; }
+.app-bi .quality-meter { background: #e4edf3; }
+.app-bi .quality-meter i { background: #12ae91; }
+.app-bi .bi-lower-grid { margin: 14px 16px 0; gap: 12px; }
+.app-bi .bi-lower-grid .panel { padding: 14px; }
+@media (max-width: 1120px) { .app-bi .bi-kpis { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
+@media (max-width: 760px) { .app-bi .bi-masthead { padding: 18px; } .app-bi .bi-masthead::after { display: none; } .app-bi .bi-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px 12px 0; } .app-bi .bi-main-grid { padding: 14px 12px 0; } .app-bi .bi-chart-grid { grid-template-columns: 1fr; } .app-bi .bi-lower-grid { margin: 12px 12px 0; } }
+
 @media (max-width: 760px) {
   .sidebar { width: min(82vw, 300px); }
   .content { padding: 28px 18px 48px; }
